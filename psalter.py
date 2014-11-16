@@ -204,6 +204,8 @@ def _remove_rubrics(text):
         '', text)
     # apparently they forget to specify the face sometimes.
     text = re.sub(r'<font size="2"><i>[^<]*</i></font>', '', text)
+    # ... NO WORDS. I AM SLAIN.
+    text = re.sub(r'<i><font size="2">[^<]*</font></i>', '', text)
     return text
 
 def _remove_page_numbers(text):
