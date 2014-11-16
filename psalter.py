@@ -29,9 +29,9 @@ class Psalter:
         psalm = Chapter('Psalm', number)
 
         # Errrk
-        has_start_heading = re.search(r'^\s*[0-9]+[^~0-9]*~~([^~0-9]*)~~', text)
+        has_start_heading = re.search(r'^\s*[0-9]+[^~0-9]*~~([^0-9~]*)~~', text)
         if has_start_heading:
-            next_heading = has_start_heading.group(1)
+            next_heading = _bcp_clean(has_start_heading.group(1))
         else:
             next_heading = None
 
@@ -44,16 +44,18 @@ class Psalter:
             head_match = re.search(r'~~([^~]+)~~', a)
             if(head_match):
                 a = re.sub(r'~~[^~]+~~', '', a)
+                a = _bcp_clean(a)
                 if heading is not None:
                     raise RuntimeError("Tried to overwrite a heading...")
                 heading = head_match.group(1)
             tail_match = re.search(r'~~([^~]+)~~', b)
             if(tail_match):
                 b = re.sub(r'~~[^~]+~~', '', b)
-                next_heading = tail_match.group(1)
+                b = _bcp_clean(b)
+                next_heading = _bcp_clean(tail_match.group(1))
             else:
                 next_heading = None
-            psalm.add_verse(_bcp_clean(a), _bcp_clean(b), heading)
+            psalm.add_verse(a, b, heading)
         return psalm
 
     def psalm(self, psalm):
@@ -213,12 +215,12 @@ def _remove_page_numbers(text):
     return text
 
 def _save_headings(text):
-    # This format indicates an intra-verse title. Let's change it to something
-    # we aren't going to blow away:
+    # This format indicates an intra-verse heading. Let's change it to
+    # something obvious, but that we won't blow away with the markup:
     text = re.sub(r'<b>([^<>]+)</b>', r'~~\1~~', text)
     # Some headings read "Psalm XYZ: Part II". That messes up our regexes
     # around verse-numbers (which is too fragile to fix)
-    text = re.sub(r'Psalm [0-9]+: Part ([IVX]+)', r'Part \1', text)
+    text = re.sub(r'Psalm [0-9]+:.*?Part ([IVX]+)', r'Part \1', text)
     return text
 
 def _remove_markup(text):
@@ -239,21 +241,21 @@ def _bcp_clean(text):
     # Maybe it isn't, but I'm too afraid to change it
 
     # Verse numbers and asterisks can be reconstructed. The rest is garbage.
-    text = re.sub(r'\r',    ' ', text)
-    text = re.sub(r'\n',    ' ', text)
-    text = re.sub(r'\t',    ' ', text)
-    text = re.sub(r'\*',    ' ', text)
-    text = re.sub(r'[0-9]+',' ', text)
+    text = re.sub(r'\r',     ' ', text)
+    text = re.sub(r'\n',     ' ', text)
+    text = re.sub(r'\t',     ' ', text)
+    text = re.sub(r'\*',     ' ', text)
+    text = re.sub(r'[0-9]+', ' ', text)
 
     # Whitespace consolidation
-    text = re.sub(r'&nbsp;',' ', text) # hrrrk
-    text = re.sub(r' {2,}', ' ', text)
+    text = re.sub(r'&nbsp;', ' ', text) # hrrrk
+    text = re.sub(r' {2,}',  ' ', text)
 
     # clean up stuff that doesn't belong on the ends:
-    text = re.sub(r'^<br>', '', text)
-    text = re.sub(r'<br>$', '', text)
-    text = re.sub(r'^ ',    '', text)
-    text = re.sub(r' $',    '', text)
+    text = re.sub(r'^<br>',  '', text)
+    text = re.sub(r'<br>$',  '', text)
+    text = re.sub(r'^ ',     '', text)
+    text = re.sub(r' $',     '', text)
 
     # some textual substitutions:
     text = re.sub(r'&quot;', '"', text)
