@@ -74,18 +74,61 @@ class Chapter:
         return self.book + ' ' + str(self.number)
 
 class Verse:
-    def __init__(self, book, chapter, number, fragment_a, fragment_b):
+    def __init__(self, book, chapter, number,
+                 fragment_a, fragment_b):
         self.book = book
         self.chapter = chapter
         self.number = number
         self.a = fragment_a
         self.b = fragment_b
 
+
     def __str__(self):
-        return str(self.number) + ' ' + self.a + ' *\n' + self.b
+        return (str(self.number) + ' ' +
+                self.a + ' *\n' +
+                self.b)
 
     def __repr__(self):
         return self.book + ' ' + str(self.chapter) + ':' + str(self.number)
+
+class TestError(Exception):
+    pass
+
+class AssertError(TestError):
+    def __init__(self, case, expected, actual):
+        self.case = case
+        self.expected = expected
+        self.actual = str(actual)
+
+    def __repr__(self):
+        return self.case
+
+    def __str__(self):
+        # Turns out string generators are obnoxious as all get out
+        diff = unified_diff(self.expected.split('\n'), self.actual.split('\n'),
+                            fromfile='expected', tofile='got', n=2, lineterm='')
+        buf = str(self.case) + '\n'
+        for line in diff:
+            buf += line + '\n'
+        return buf
+
+class TestNotFoundError(TestError):
+    def __init__(self, name, directory=False):
+        self.name = str(name)
+        if not directory:
+            self.msg = ' is not a valid test.'
+        else:
+            self.msg = ' contains no valid tests.'
+
+    def __str__(self):
+        return self.name + self.msg
+
+class InvalidTestError(TestError):
+    def __init__(self, psalm):
+        self.psalm = str(psalm)
+
+    def __str__(self):
+        return self.psalm + ' is not a valid BCP Psalter Psalm.'
 
 def _bcpurl_from_psalm(psalm):
     bottom = (((psalm - 1)/ 10) * 10 + 1)
@@ -167,29 +210,95 @@ def _bcp_clean(text):
 
 ########
 
-def main():
-    if '--help' in sys.argv or '-h' in sys.argv:
-        print 'Usage: ' + sys.argv[0] + ' <command>'
-        print '''
-Valid Commands:
-  --bcp <psalms>  Print out the BCP translation for each specified psalm.
-                  <psalms> is a space-delimited list of numbers 1-150, inclusive
-  --bcp-dump      Print out the entire BCP Psalter'''
+def expand_directory(directory):
+    test_files = []
+    for entry in os.listdir(directory):
+        entry = os.path.join(directory, entry)
+        if os.path.isfile(entry):
+            with open(entry, 'r') as f:
+                if re.search(r'^# TESTCASE ([0-9]+)$', f.readline()):
+                    test_files.append(entry)
+    if len(test_files) == 0:
+        raise TestNotFoundError(directory, directory=True)
+    return test_files
+
+def assert_equal(expected, actual, note=None):
+    if(expected != str(actual)):
+        raise AssertError(note, expected, actual)
+    else:
+        print('PASSED: ' + str(note))
+
+def test_case(case):
+    with open(case, 'r') as f:
+        test_info = re.search(r'^# TESTCASE ([0-9]+)$', f.readline())
+        if not test_info:
+            return
+        psalm = int(test_info.group(1))
+        if psalm < 1 or 150 < psalm:
+            raise InvalidTestError(psalm)
+        expected = ''
+        for line in f:
+            if not re.search(r'^#.*$', line) and not re.search(r'^$', line):
+                expected += line
 
     psalter = Psalter()
+    assert_equal(expected, str(psalter.psalm(psalm)), psalm)
 
-    if 1 < len(sys.argv):
-        if sys.argv[1] == '--bcp':
-            for i in range(2, len(sys.argv)):
-                psalm = int(sys.argv[i])
-                print psalter.psalm(psalm)
-                print
-        elif sys.argv[1] == '--bcp-dump':
-            for i in range(1,151):
-                print psalter.psalm(i)
+def print_usage(code):
+    print 'Usage: ' + sys.argv[0] + ' <command>'
+    print '''
+Valid Commands:
+  --bcp <psalms>      Print out the BCP translation for each specified psalm.
+                          <psalms> is a space-delimited list of numbers 1-150
+  --bcp-dump          Print out the entire BCP Psalter
+  --test [cases]      Run --bcp and compare input against [cases].
+                          [cases] defaults to the script's directory.
+'''
+    sys.exit(code)
+
+def main():
+    if '--help' in sys.argv or '-h' in sys.argv or len(sys.argv) == 1:
+        print_usage(0)
+
+    psalter = Psalter()
+    if sys.argv[1] == '--bcp':
+        for psalm in sys.argv[2:]:
+            print
+            print psalter.psalm(int(psalm))
+    elif sys.argv[1] == '--bcp-dump':
+        for i in range(1,151):
+            print psalter.psalm(i)
+    elif sys.argv[1] == '--test':
+        if 2 < len(sys.argv):
+            cases = sys.argv[2:]
+        else:
+            cases = [os.path.dirname(sys.argv[0])]
+
+        new_cases = []
+        for c in cases:
+            c = os.path.abspath(c)
+            if os.path.isdir(c):
+                try:
+                    new_cases.extend(expand_directory(c))
+                except TestError as e:
+                    print 'FAIL: ' + str(e)
+
+        cases.extend(new_cases)
+
+        for c in cases:
+            c = os.path.abspath(c)
+            if os.path.isfile(c):
+                try:
+                    test_case(c)
+                except TestError as e:
+                    print 'FAIL: ' + str(e)
+    else:
+        print_usage(1)
 
 if '__main__' == __name__:
+    import os
     import sys
+    from difflib import unified_diff
     main()
 
 # Psalms by length
@@ -233,5 +342,5 @@ if '__main__' == __name__:
 # 176: [119]
 
 # verse counts from biblegateway.com
-# note that these don't agree with the BCP 
-# (which seems to favor more & shorter verses):
+# note that these don't agree with the BCP (which favors parallelism).
+# cf Ps 133 and Ps 134
