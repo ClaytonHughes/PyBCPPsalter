@@ -16,6 +16,7 @@ class Psalter:
         # then pretty it up:
         text = _remove_rubrics(text)
         text = _remove_page_numbers(text)
+        text = _save_headings(text)
         text = _remove_markup(text)
 
         verse_a = re.findall(r'[0-9]+[^0-9]*\*', text, re.DOTALL)
@@ -27,9 +28,32 @@ class Psalter:
 
         psalm = Chapter('Psalm', number)
 
+        # Errrk
+        has_start_heading = re.search(r'^\s*[0-9]+[^~0-9]*~~([^~0-9]*)~~', text)
+        if has_start_heading:
+            next_heading = has_start_heading.group(1)
+        else:
+            next_heading = None
+
         for v in range(0, len(verse_a)):
+            heading = next_heading
             # keep prettying:
-            psalm.add_verse(_bcp_clean(verse_a[v]), _bcp_clean(verse_b[v]))
+            a = _bcp_clean(verse_a[v])
+            b = _bcp_clean(verse_b[v])
+
+            head_match = re.search(r'~~([^~]+)~~', a)
+            if(head_match):
+                a = re.sub(r'~~[^~]+~~', '', a)
+                if heading is not None:
+                    raise RuntimeError("Tried to overwrite a heading...")
+                heading = head_match.group(1)
+            tail_match = re.search(r'~~([^~]+)~~', b)
+            if(tail_match):
+                b = re.sub(r'~~[^~]+~~', '', b)
+                next_heading = tail_match.group(1)
+            else:
+                next_heading = None
+            psalm.add_verse(_bcp_clean(a), _bcp_clean(b), heading)
         return psalm
 
     def psalm(self, psalm):
@@ -57,9 +81,9 @@ class Chapter:
         self.number = number
         self.verses = []
 
-    def add_verse(self, fragment_a, fragment_b):
+    def add_verse(self, fragment_a, fragment_b, heading=None):
         self.verses.append(Verse(self.book, self.number, len(self.verses)+1,
-                                  fragment_a, fragment_b))
+                                  fragment_a, fragment_b, heading))
 
     def __len__(self):
         return len(self.verses)
@@ -75,16 +99,28 @@ class Chapter:
 
 class Verse:
     def __init__(self, book, chapter, number,
-                 fragment_a, fragment_b):
+                 fragment_a, fragment_b, heading=None):
         self.book = book
         self.chapter = chapter
         self.number = number
         self.a = fragment_a
         self.b = fragment_b
+        if heading is None:
+            self.heading = ''
+        else:
+            self.heading = heading
 
+    def has_heading(self):
+        return self.heading != ''
+
+    def _heading_str(self):
+        if self.has_heading():
+            return self.heading + '\n'
+        return ''
 
     def __str__(self):
-        return (str(self.number) + ' ' +
+        return (self._heading_str() +
+                str(self.number) + ' ' +
                 self.a + ' *\n' +
                 self.b)
 
@@ -157,16 +193,32 @@ def _extract_chapter(text, psalm):
 
 def _remove_rubrics(text):
     # deal with rubrics and latin blowing things up:
-    text = re.sub(r'<font face="Goudy Old Style" size="2"><i>[^<]*</i></font>',
-                  '', text)
+    text = re.sub(
+        r'<font face="Goudy Old Style" size="2"><i>[^<]*</i></font>',
+        '', text)
     # lol, of course:
-    text = re.sub(r'<i><font face="Goudy Old Style" size="2">[^<]*</font></i>',
-                  '', text)
+    text = re.sub(
+        r'<i>\n*\s*<font face="Goudy Old Style" size="2">[^<]*</font></i>',
+        '', text)
+    # apparently they forget to specify the face sometimes.
+    text = re.sub(r'<font size="2"><i>[^<]*</i></font>', '', text)
     return text
 
 def _remove_page_numbers(text):
+    # on the left:
+    text = re.sub(r'<p>[0-9]+.*?</p>', '', text)
+    # and on the right:
     # Oh God, this .*\n*.* pattern is so fragile:
     text = re.sub(r'<p align="right">.*\n*.*</p>', '', text, re.DOTALL)
+    return text
+
+def _save_headings(text):
+    # This format indicates an intra-verse title. Let's change it to something
+    # we aren't going to blow away:
+    text = re.sub(r'<b>([^<>]+)</b>', r'~~\1~~', text)
+    # Some headings read "Psalm XYZ: Part II". That messes up our regexes
+    # around verse-numbers (which is too fragile to fix)
+    text = re.sub(r'Psalm [0-9]+: Part ([IVX]+)', r'Part \1', text)
     return text
 
 def _remove_markup(text):
