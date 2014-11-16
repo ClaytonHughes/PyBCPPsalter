@@ -251,6 +251,8 @@ Valid Commands:
   --bcp <psalms>      Print out the BCP translation for each specified psalm.
                           <psalms> is a space-delimited list of numbers 1-150
   --bcp-dump          Print out the entire BCP Psalter
+  --count [psalms]    Print out the verse count of the specified psalms
+                          [psalms] defaults to all of them, 1-150
   --test [cases]      Run --bcp and compare input against [cases].
                           [cases] defaults to the script's directory.
 '''
@@ -268,6 +270,13 @@ def main():
     elif sys.argv[1] == '--bcp-dump':
         for i in range(1,151):
             print psalter.psalm(i)
+    elif sys.argv[1] == '--count':
+        if 2 < len(sys.argv):
+            psalms = sys.argv[2:]
+        else:
+            psalms = range(1,151)
+        for i in psalms:
+            print str(i) + ': ' + str(len(psalter.psalm(int(i))))
     elif sys.argv[1] == '--test':
         if 2 < len(sys.argv):
             cases = sys.argv[2:]
